@@ -24,7 +24,6 @@ You can customize the following settings in the plugin options:
 
 Here is the sidebar settings formatted in the requested table style:
 
-```markdown
 ## Sidebar Settings
 
 ### General
@@ -57,7 +56,6 @@ Here is the sidebar settings formatted in the requested table style:
 | --------------------------- | ---------------------------------------------- | ------- |
 | Left Sidebar Maximum Width  | Maximum width in pixels for the left sidebar.  | 325     |
 | Right Sidebar Maximum Width | Maximum width in pixels for the right sidebar. | 325     |
-```
 
 ## Installation
 
