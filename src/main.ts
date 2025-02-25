@@ -1,288 +1,602 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Plugin, PluginSettingTab, Setting } from "obsidian";
 
 interface OpenSidebarHoverSettings {
-	leftSidebar: boolean;
-	rightSidebar: boolean;
-	enforceSameDelay: boolean;
-	sidebarDelayBoth: int;
-	sidebarDelayRight: int;
-	sidebarDelayLeft: int;
-	speedDetection: boolean;
+  leftSidebar: boolean;
+  rightSidebar: boolean;
+  syncLeftRight: boolean;
+  enforceSameDelay: boolean;
+  sidebarDelay: number;
+  sidebarExpandDelay: number;
+  leftSideBarPixelTrigger: number;
+  rightSideBarPixelTrigger: number;
+  overlayMode: boolean;
+  expandCollapseSpeed: number;
+  leftSidebarMaxWidth: number;
+  rightSidebarMaxWidth: number;
 }
 
 const DEFAULT_SETTINGS: OpenSidebarHoverSettings = {
-	leftSidebar: true,
-	rightSidebar: false,
-	enforceSameDelay: true,
-	sidebarDelayBoth: '300',
-	sidebarDelayLeft: '300',
-	sidebarDelayRight: '300',
-	speedDetection: false
-}
+  leftSidebar: true,
+  rightSidebar: true,
+  syncLeftRight: false,
+  enforceSameDelay: true,
+  sidebarDelay: 150,
+  sidebarExpandDelay: 10,
+  leftSideBarPixelTrigger: 20,
+  rightSideBarPixelTrigger: 20,
+  overlayMode: false,
+  expandCollapseSpeed: 370,
+  leftSidebarMaxWidth: 325,
+  rightSidebarMaxWidth: 325,
+};
 
 export default class OpenSidebarHover extends Plugin {
-	settings: OpenSidebarHoverSettings;
+  settings: OpenSidebarHoverSettings;
+  isHoveringLeft = false;
+  isHoveringRight = false;
+  leftSplit: any;
+  rightSplit: any;
+  leftRibbon: any;
+  leftSplitMouseEnterHandler: () => void;
+  rightSplitMouseEnterHandler: () => void;
+  
+  // Event handler for document clicks
+  documentClickHandler = (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    
+    // Make sure leftSplit and rightSplit are initialized
+    if (!this.leftSplit || !this.rightSplit) return;
+    
+    const leftSplitEl = this.leftSplit.containerEl;
+    const rightSplitEl = this.rightSplit.containerEl;
+    
+    // If clicking outside sidebar areas and they're expanded, collapse them
+    if (!leftSplitEl.contains(target) && !rightSplitEl.contains(target)) {
+      if (!this.leftSplit.collapsed && this.settings.leftSidebar) {
+        this.collapseLeft();
+      }
+      if (!this.rightSplit.collapsed && this.settings.rightSidebar) {
+        this.collapseRight();
+      }
+    }
+  };
 
-	async onload() {
-		await this.loadSettings();		
-		
-		/*
-		Believe me, I'm aware of how terrible this looks. But the way it works means I'm kind of inducing a race
-		condition. So, it sort of has to be in one big thing in order to access the appropriate variable. I'm sure
-		with enough time I could make it look good, but right now I'm more concerned with getting it to work :p
-		*/
-		this.app.workspace.onLayoutReady(() => {
-			//Split constants -- Just streamlines calling them
-			const leftSplit = this.app.workspace.leftSplit;
-			const rightSplit = this.app.workspace.rightSplit;
-			
-			//Ribbon constants -- Just streamlines calling them a bit
-			const leftRibbon = this.app.workspace.leftRibbon;
-			const rightRibbon = this.app.workspace.rightRibbon;
-			
-			//Settings constant -- Same as above
-			const settingsConst = this.settings;
-			
-			//Variables
-			let isHovering = false; //Variable to check if the cursor is hovering. Needed due to Obsidian's behaviour on the top bar.
-			
-			let delayTime;
-			
-			//Check to see if the cursor has left the leftSplit area...
-			this.registerDomEvent(leftSplit.containerEl, "mouseleave", () => {
-				if(settingsConst.leftSidebar){ //Check to see if the user has the 'Left Sidebar Hover' setting enabled.
-					isHovering = false;
-					
-					if(settingsConst.enforceSameDelay){
-						delayTime = settingsConst.sidebarDelayBoth;
-					}else {
-						delayTime = settingsConst.sidebarDelayLeft;
-					}
-					
-					setTimeout(() => {
-						if(!isHovering)
-							leftSplit.collapse(); //...if it has after the appropriate delay length, close the leftSplit...
-					}, delayTime);
+  async onload() {
+    await this.loadSettings();
 
-					this.registerDomEvent(leftSplit.containerEl, "mouseenter", () => {
-						isHovering = true; //...but if the mouse reenters before the delay length, set 'isHovering' to true, preventing the above from happening.
-					});
-				}
-			});
-			
-			//Check to see if the cursor has left the leftSplit area...
-			this.registerDomEvent(rightSplit.containerEl, "mouseleave", () => {
-				//Check to see if the user has the 'Right Sidebar Hover' setting enabled.
-				if(settingsConst.rightSidebar){
-					isHovering = false;
-					
-					if(settingsConst.enforceSameDelay){
-						let delayTime = settingsConst.sidebarDelayBoth;
-					}else {
-						let delayTime = settingsConst.sidebarDelayLeft;
-					}
-					
-					setTimeout(() => {
-						if(!isHovering)
-							rightSplit.collapse(); //...if it has after the appropriate delay length, close the rightSplit...
-					}, delayTime);
+    // Apply overlay mode class if enabled in settings
+    if (this.settings.overlayMode) {
+      document.body.classList.add("sidebar-overlay-mode");
+    }
 
-					this.registerDomEvent(rightSplit.containerEl, "mouseenter", () => {
-						isHovering = true; //...but if the mouse reenters before the delay length, set 'isHovering' to true, preventing the above from happening.
-					});
-				}
-			});
-			
-			this.registerDomEvent(document, "mouseleave", () => { isHovering = true; }) //Any time the cursor leaves the application (which includes the top bar), set 'isHovering' to true.
-			
-			this.registerDomEvent(leftRibbon.containerEl, "mouseenter", () => {
-				if(settingsConst.leftSidebar){
-					this.app.workspace.leftSplit.expand(); 
-					isHovering = true;
-				}
-			});
-			this.registerDomEvent(rightRibbon.containerEl, "mouseenter", () => {
-				if(settingsConst.rightSidebar){
-					this.app.workspace.rightSplit.expand();
-					isHovering = true;
-				}
-			});
-			this.registerDomEvent(document, "mouseenter", () => {
-				isHovering = false;
-				
-				let delayTimeLeft;
-				let delayTimeRight;
-				
-				//If 'Same delay' setting is enabled...
-				if(settingsConst.enforceSameDelay){
-					delayTimeLeft = settingsConst.sidebarDelayBoth;
-					delayTimeRight = settingsConst.sidebarDelayBoth; //...set both the right and left sidebar's delay values to the delay value set for both by the user...
-				}else {
-					delayTimeLeft = settingsConst.sidebarDelayLeft;
-					delayTimeRight = settingsConst.sidebarDelayRight; //...otherwise, set them according to their respective delay values!
-				}
-				
-				setTimeout(() => {
-					if(!isHovering){
-						if(settingsConst.leftSidebar){
-							leftSplit.collapse();
-						}
-						if(settingsConst.rightSidebar){
-							rightSplit.collapse();
-						}
-					}
-				}, delayTimeLeft);
-			})
-		});
+    // Set CSS variables for animation speeds and max widths
+    this.applyCSSVariables();
+    this.app.workspace.onLayoutReady(() => {
+      this.leftSplit = this.app.workspace.leftSplit;
+      this.rightSplit = this.app.workspace.rightSplit;
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SidebarHoverSettingsTab(this.app, this));
-	}
+      this.leftRibbon = this.app.workspace.leftRibbon;
+      
+      // Apply width settings immediately to the sidebars if they exist
+      this.applySidebarWidth(this.leftSplit, this.settings.leftSidebarMaxWidth);
+      this.applySidebarWidth(this.rightSplit, this.settings.rightSidebarMaxWidth);
 
-	onunload() {
-		this.saveSettings();
-	}
+      // add event listeners - IMPORTANT: REMOVE IN UNLOAD()
+      document.addEventListener("mousemove", this.mouseMoveHandler);
+      this.rightSplit.containerEl.addEventListener(
+        "mouseleave",
+        this.rightSplitMouseLeaveHandler
+      );
+      this.rightSplitMouseEnterHandler = () => { this.isHoveringRight = true; };
+      this.rightSplit.containerEl.addEventListener(
+        "mouseenter",
+        this.rightSplitMouseEnterHandler
+      );
+      (this.leftRibbon as any).containerEl.addEventListener(
+        "mouseenter",
+        this.leftRibbonMouseEnterHandler
+      );
+      this.leftSplit.containerEl.addEventListener(
+        "mouseleave",
+        this.leftSplitMouseLeaveHandler
+      );
+      this.leftSplitMouseEnterHandler = () => { this.isHoveringLeft = true; };
+      this.leftSplit.containerEl.addEventListener(
+        "mouseenter",
+        this.leftSplitMouseEnterHandler
+      );
+      
+      // Add a document-wide click handler to help with collapse issues
+      document.addEventListener("click", this.documentClickHandler);
+    });
 
-	async loadSettings() {
-		this.settings = Object.assign(DEFAULT_SETTINGS, await this.loadData());
-	}
+    this.addSettingTab(new SidebarHoverSettingsTab(this.app, this));
+  }
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
+  onunload() {
+    this.saveSettings();
+
+    // Remove overlay mode class if it was added
+    document.body.classList.remove("sidebar-overlay-mode");
+
+    // remove all event listeners
+    document.removeEventListener("mousemove", this.mouseMoveHandler);
+    document.removeEventListener("click", this.documentClickHandler);
+    this.rightSplit.containerEl.removeEventListener(
+      "mouseleave",
+      this.rightSplitMouseLeaveHandler
+    );
+    this.rightSplit.containerEl.removeEventListener(
+      "mouseenter",
+      this.rightSplitMouseEnterHandler
+    );
+    (this.leftRibbon as any).containerEl.removeEventListener(
+      "mouseenter",
+      this.leftRibbonMouseEnterHandler
+    );
+    this.leftSplit.containerEl.removeEventListener(
+      "mouseleave",
+      this.leftSplitMouseLeaveHandler
+    );
+    this.leftSplit.containerEl.removeEventListener(
+      "mouseenter",
+      this.leftSplitMouseEnterHandler
+    );
+  }
+
+  async loadSettings() {
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+  }
+
+  async saveSettings() {
+    await this.saveData(this.settings);
+  }
+
+  // Helper method to apply CSS variables
+  applyCSSVariables() {
+    document.documentElement.style.setProperty('--sidebar-expand-collapse-speed', `${this.settings.expandCollapseSpeed}ms`);
+    document.documentElement.style.setProperty('--sidebar-expand-delay', `${this.settings.sidebarExpandDelay}ms`);
+    document.documentElement.style.setProperty('--left-sidebar-max-width', `${this.settings.leftSidebarMaxWidth}px`);
+    document.documentElement.style.setProperty('--right-sidebar-max-width', `${this.settings.rightSidebarMaxWidth}px`);
+    
+    // Try to also use Obsidian's CSS variables if they exist
+    document.body.style.setProperty('--sidebar-width', `${this.settings.leftSidebarMaxWidth}px`);
+    document.body.style.setProperty('--right-sidebar-width', `${this.settings.rightSidebarMaxWidth}px`);
+  }
+  
+  // Try to apply sidebar width using various methods
+  applySidebarWidth(split: any, width: number) {
+    if (!split || !split.containerEl) return;
+    
+    // Set transition first to ensure smooth animation
+    const transitionValue = `width var(--sidebar-expand-collapse-speed) ease, max-width var(--sidebar-expand-collapse-speed) ease`;
+    split.containerEl.style.transition = transitionValue;
+    
+    // Direct style manipulation
+    split.containerEl.style.width = `${width}px`;
+    split.containerEl.style.maxWidth = `${width}px`;
+    
+    // Try various Obsidian internal methods
+    const methodsToTry = ['resize', 'setWidth', 'setSize', 'onResize'];
+    for (const method of methodsToTry) {
+      if (typeof split[method] === 'function') {
+        try {
+        split[method](width);
+        break; // Stop if we found a working method
+        } catch (e) {
+          // Method failed, try the next one
+        }
+      }
+    }
+  }
+
+  // -- Non-Obsidian API --------------------------
+  // Helpers
+  getEditorWidth = () => this.app.workspace.containerEl.clientWidth;
+
+  expandRight() {
+    // Start animation by expanding
+    this.rightSplit.expand();
+    this.isHoveringRight = true;
+    
+    // Wait a short time to ensure the expansion animation starts
+    setTimeout(() => {
+      // Then apply the width with our helper method
+      this.applySidebarWidth(this.rightSplit, this.settings.rightSidebarMaxWidth);
+    }, 50); // Small delay to let expansion animation start
+  }
+  expandLeft() {
+    // Start animation by expanding
+    this.leftSplit.expand();
+    this.isHoveringLeft = true;
+    
+    // Wait a short time to ensure the expansion animation starts
+    setTimeout(() => {
+      // Then apply the width with our helper method
+      this.applySidebarWidth(this.leftSplit, this.settings.leftSidebarMaxWidth);
+    }, 50); // Small delay to let expansion animation start
+  }
+  expandBoth() {
+    this.expandRight();
+    this.expandLeft();
+  }
+  collapseRight() {
+    this.rightSplit.collapse();
+    this.isHoveringRight = false;
+  }
+  collapseLeft() {
+    this.leftSplit.collapse();
+    this.isHoveringLeft = false;
+  }
+  collapseBoth() {
+    this.collapseRight();
+    this.collapseLeft();
+  }
+  // Event handlers
+  mouseMoveHandler = (event: MouseEvent) => {
+    const mouseX = event.clientX;
+    
+    // Handle right sidebar hover
+    if (this.settings.rightSidebar) {
+      if (!this.isHoveringRight && this.rightSplit.collapsed) {
+        const editorWidth = this.getEditorWidth();
+
+        this.isHoveringRight =
+          mouseX >= editorWidth - this.settings.rightSideBarPixelTrigger;
+
+        if (this.isHoveringRight && this.rightSplit.collapsed) {
+          setTimeout(() => {
+            if (this.isHoveringRight) {
+              if (this.settings.syncLeftRight) {
+                this.expandBoth();
+              } else {
+                this.expandRight();
+              }
+            }
+          }, this.settings.sidebarExpandDelay);
+        }
+
+        setTimeout(() => {
+          if (!this.isHoveringRight) {
+            this.collapseRight();
+          }
+        }, this.settings.sidebarDelay);
+      }
+    }
+    
+    // Handle left sidebar hover
+    if (this.settings.leftSidebar) {
+      if (!this.isHoveringLeft && this.leftSplit.collapsed) {
+        // Check if mouse is in the left trigger area
+        this.isHoveringLeft = mouseX <= this.settings.leftSideBarPixelTrigger;
+
+        if (this.isHoveringLeft && this.leftSplit.collapsed) {
+          setTimeout(() => {
+            if (this.isHoveringLeft) {
+              if (this.settings.syncLeftRight) {
+                this.expandBoth();
+              } else {
+                this.expandLeft();
+              }
+            }
+          }, this.settings.sidebarExpandDelay);
+        }
+
+        setTimeout(() => {
+          if (!this.isHoveringLeft) {
+            this.collapseLeft();
+          }
+        }, this.settings.sidebarDelay);
+      }
+    }
+  };
+
+  rightSplitMouseLeaveHandler = (event: MouseEvent) => {
+    // Don't process if we're leaving to the tab header container
+    const target = event.relatedTarget as HTMLElement;
+    if (target && target.closest('.workspace-tab-header-container-inner')) {
+      return;
+    }
+    
+    if (this.settings.rightSidebar) {
+      this.isHoveringRight = false;
+
+      setTimeout(() => {
+        if (!this.isHoveringRight) {
+          if (this.settings.syncLeftRight && this.settings.leftSidebar) {
+            this.collapseBoth();
+          } else {
+            this.collapseRight();
+          }
+        }
+      }, this.settings.sidebarDelay);
+    }
+  };
+
+  leftSplitMouseLeaveHandler = (event: MouseEvent) => {
+    // Don't process if we're leaving to the tab header container
+    const target = event.relatedTarget as HTMLElement;
+    if (target && target.closest('.workspace-tab-header-container-inner')) {
+      return;
+    }
+
+    if (this.settings.leftSidebar) {
+      this.isHoveringLeft = false;
+
+      setTimeout(() => {
+        if (!this.isHoveringLeft) {
+          if (this.settings.syncLeftRight && this.settings.rightSidebar) {
+            this.collapseBoth();
+          } else {
+            this.collapseLeft();
+          }
+        }
+      }, this.settings.sidebarDelay);
+    }
+  };
+
+  leftRibbonMouseEnterHandler = () => {
+    if (this.settings.leftSidebar) {
+      this.isHoveringLeft = true;
+      setTimeout(() => {
+        // Check if still hovering
+        if (this.isHoveringLeft) {
+          if (this.settings.syncLeftRight && this.settings.rightSidebar) {
+            this.expandBoth();
+          } else {
+            this.expandLeft();
+          }
+        }
+      }, this.settings.sidebarExpandDelay);
+    }
+  };
 }
 
 class SidebarHoverSettingsTab extends PluginSettingTab {
-	plugin: OpenSidebarHover;
+  plugin: OpenSidebarHover;
 
-	constructor(app: App, plugin: OpenSidebarHover) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
+  constructor(app: App, plugin: OpenSidebarHover) {
+    super(app, plugin);
+    this.plugin = plugin;
+  }
 
-	display(): void {
-		const {containerEl} = this;
+  display(): void {
+    const { containerEl } = this;
 
-		containerEl.empty();
-		
-		/*
-			+==================+
-			| GENERAL SETTINGS |
-			+==================+
-		*/
-		
-		new Setting(containerEl).setName('Left Sidebar Hover')
-			.setDesc("Enables the expansion and collapsing of the left sidebar on hover.")
-			.addToggle(t => t
-				.setValue(this.plugin.settings.leftSidebar)
-				.onChange(async (value) => {
-					this.plugin.settings.leftSidebar = value;
-					await this.plugin.saveSettings();
-				}));
-		
-		new Setting(containerEl).setName('Right Sidebar Hover')
-			.setDesc("Enables the expansion and collapsing of the right sidebar on hover. Only collapses the right panel unless you have a right ribbon.")
-			.addToggle(t => t
-				.setValue(this.plugin.settings.rightSidebar)
-				.onChange(async (value) => {
-					this.plugin.settings.rightSidebar = value;
-					await this.plugin.saveSettings();
-				}));
-		
-		/*
-			+=========================+
-			| COLLAPSE DELAY SETTINGS |
-			+=========================+
-		*/
-		
-		new Setting(containerEl).setName("Collapse Delay").setHeading();
-		
-		//'Same Collapse Delay' setting
-		new Setting(containerEl).setName('Same Collapse Delay')
-			.setDesc("Makes the delay for the left and right sidebars the same.")
-			.addToggle(t => t
-				.setValue(this.plugin.settings.enforceSameDelay)
-				.onChange(async (value) => {
-					//Set plugin setting according to toggle value
-					this.plugin.settings.enforceSameDelay = value;
-					
-					//Set the delay settings for the right, left, and both sidebars accordingly
-					rightSidebarDelaySetting.setDisabled(value);
-					leftSidebarDelaySetting.setDisabled(value);
-					bothSidebarDelaySetting.setDisabled(!value);
-					
-					//Save the plugin setting
-					await this.plugin.saveSettings();
-				}));
-				
-		//'Sidebar Collapse Delay (Both)' setting
-		const bothSidebarDelaySetting = new Setting(containerEl)
-		.setName('Sidebar Collapse Delay (Both)')
-		.setDesc('The delay in milliseconds before the right sidebar collapses after the mouse has left. Enter \'0\' to disable delay.')
-		.addText(text => text
-			.setPlaceholder('0')
-			.setValue(this.plugin.settings.sidebarDelayBoth)
-			.onChange(async (value) => {
-				this.plugin.settings.sidebarDelayBoth = value;
-				await this.plugin.saveSettings();
-			}))
-		.setClass("expand-sidebar-hover-disabled");
-		
-		//'Left Sidebar Collapse Delay' setting
-		const leftSidebarDelaySetting = new Setting(containerEl)
-		.setName('Left Sidebar Collapse Delay')
-		.setDesc('The delay in milliseconds before the left sidebar collapses after the mouse has left. Enter \'0\' to disable delay.')
-		.addText(text => text
-			.setPlaceholder('0')
-			.setValue(this.plugin.settings.sidebarDelayLeft)
-			.onChange(async (value) => {
-				this.plugin.settings.sidebarDelayLeft = value;
-				await this.plugin.saveSettings();
-			}))
-		.setClass("expand-sidebar-hover-disabled");
-		
-		//'Right Sidebar Collapse Delay' setting
-		const rightSidebarDelaySetting = new Setting(containerEl)
-		.setName('Right Sidebar Collapse Delay')
-		.setDesc('The delay in milliseconds before the right sidebar collapses after the mouse has left. Enter \'0\' to disable delay.')
-		.addText(text => text
-			.setPlaceholder('0')
-			.setValue(this.plugin.settings.sidebarDelayRight)
-			.onChange(async (value) => {
-				this.plugin.settings.sidebarDelayRight = value;
-				await this.plugin.saveSettings();
-			}))
-		.setClass("expand-sidebar-hover-disabled");
-		
-		//Note: This conditional seems to only be checked once, when the plugin is enabled. Hence why it's written as such.
-		//Check to see if 'Same Collapse Delay' is set to true...
-		if(this.plugin.settings.enforceSameDelay){
-			rightSidebarDelaySetting.setDisabled(true);
-			leftSidebarDelaySetting.setDisabled(true); //...if so, disable the left and right 'Sidebar Collapse Delay' settings...
-		}else {
-			bothSidebarDelaySetting.setDisabled(true); //...otherwise, only disable the 'Sidebar Collapse Delay (Both)' setting!
-		}
-		
-		/*
-			+=======================+
-			| EXPERIMENTAL SETTINGS |
-			+=======================+
-		*/
-		
-		new Setting(containerEl).setName("Experimental Features").setHeading().setDesc("Settings to enable experimental features. Note that such settings may not always be present.");
-		
-		containerEl.createEl("i", { text: "Sorry, nothin' to report right now boss!" });
-		
-		/**
-		//May or may not ever get implemented.
-		new Setting(containerEl).setName('High Speed Detection (BETA)')
-			.setDesc("If enabled, prevents the sidebar from expanding if the cursor is moving too quickly.")
-			.addToggle(t => t
-				.setValue(this.plugin.settings.speedDetection)
-				.onChange(async (value) => {
-					this.plugin.settings.speedDetection = value;
-					await this.plugin.saveSettings();
-				}));
-		**/
-	}
+    containerEl.empty();
+
+    // BASIC SETTINGS (no heading)
+    new Setting(containerEl)
+      .setName("Left Sidebar Hover")
+      .setDesc(
+        "Enables the expansion and collapsing of the left sidebar on hover."
+      )
+      .addToggle((t) =>
+        t.setValue(this.plugin.settings.leftSidebar).onChange(async (value) => {
+          this.plugin.settings.leftSidebar = value;
+          await this.plugin.saveSettings();
+        })
+      );
+
+    new Setting(containerEl)
+      .setName("Right Sidebar Hover")
+      .setDesc(
+        "Enables the expansion and collapsing of the right sidebar on hover. Only collapses the right panel unless you have a right ribbon."
+      )
+      .addToggle((t) =>
+        t
+          .setValue(this.plugin.settings.rightSidebar)
+          .onChange(async (value) => {
+            this.plugin.settings.rightSidebar = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Sync Left and Right")
+      .setDesc(
+        "If enabled, hovering over the right sidebar will also expand the left sidebar at the same time, and vice versa. (Left and Right sidebar must both be enabled above)"
+      )
+      .addToggle((t) =>
+        t
+          .setValue(this.plugin.settings.syncLeftRight)
+          .onChange(async (value) => {
+            this.plugin.settings.syncLeftRight = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName("Overlay Mode")
+      .setDesc(
+        "When enabled, sidebars will slide over the main content without affecting the layout. When disabled, sidebars will expand by pushing content."
+      )
+      .addToggle((t) =>
+        t
+          .setValue(this.plugin.settings.overlayMode)
+          .onChange(async (value) => {
+            this.plugin.settings.overlayMode = value;
+            
+            // Update CSS class on body to toggle overlay mode
+            if (value) {
+              document.body.classList.add("sidebar-overlay-mode");
+            } else {
+              document.body.classList.remove("sidebar-overlay-mode");
+            }
+            
+            await this.plugin.saveSettings();
+          })
+      );
+      
+    // BEHAVIOR SECTION
+    new Setting(containerEl).setName("Behavior").setHeading();
+
+    new Setting(containerEl)
+      .setName("Left Sidebar Pixel Trigger")
+      .setDesc(
+        "Specify the number of pixels from the left edge of the editor that will trigger the left sidebar to open on hover (must be greater than 0)"
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("30")
+          .setValue(this.plugin.settings.leftSideBarPixelTrigger.toString())
+          .onChange(async (value) => {
+            const v = Number(value);
+            if (!value || isNaN(v) || v < 1) {
+              this.plugin.settings.leftSideBarPixelTrigger =
+                DEFAULT_SETTINGS.leftSideBarPixelTrigger;
+            } else {
+              this.plugin.settings.leftSideBarPixelTrigger = v;
+            }
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Right Sidebar Pixel Trigger")
+      .setDesc(
+        "Specify the number of pixels from the right edge of the editor that will trigger the right sidebar to open on hover (must be greater than 0)"
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("30")
+          .setValue(this.plugin.settings.rightSideBarPixelTrigger.toString())
+          .onChange(async (value) => {
+            const v = Number(value);
+            if (!value || isNaN(v) || v < 1) {
+              this.plugin.settings.rightSideBarPixelTrigger =
+                DEFAULT_SETTINGS.rightSideBarPixelTrigger;
+            } else {
+              this.plugin.settings.rightSideBarPixelTrigger = v;
+            }
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // TIMING SECTION
+    new Setting(containerEl).setName("Timing").setHeading();
+
+    new Setting(containerEl)
+      .setName("Sidebar Collapse Delay")
+      .setDesc(
+        "The delay in milliseconds before the sidebar collapses after the mouse has left. Enter '0' to disable delay."
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("300")
+          .setValue(this.plugin.settings.sidebarDelay.toString())
+          .onChange(async (value) => {
+            const v = Number(value);
+            if (!v || isNaN(v) || v < 0) {
+              this.plugin.settings.sidebarDelay = DEFAULT_SETTINGS.sidebarDelay;
+            } else {
+              this.plugin.settings.sidebarDelay = v;
+            }
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Sidebar Expand Delay")
+      .setDesc(
+        "The delay in milliseconds before the sidebar expands after hovering. Default is 200ms."
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("200")
+          .setValue(this.plugin.settings.sidebarExpandDelay.toString())
+          .onChange(async (value) => {
+            const v = Number(value);
+            if (!v || isNaN(v) || v < 0) {
+              this.plugin.settings.sidebarExpandDelay = DEFAULT_SETTINGS.sidebarExpandDelay;
+            } else {
+              this.plugin.settings.sidebarExpandDelay = v;
+            }
+            // Apply the CSS variables immediately
+            this.plugin.applyCSSVariables();
+            await this.plugin.saveSettings();
+          });
+      });
+      
+    new Setting(containerEl)
+      .setName("Expand/Collapse Animation Speed")
+      .setDesc(
+        "The speed of the sidebar expand/collapse animation in milliseconds."
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("300")
+          .setValue(this.plugin.settings.expandCollapseSpeed?.toString() || "300")
+          .onChange(async (value) => {
+            const v = Number(value);
+            if (!value || isNaN(v) || v < 0) {
+              this.plugin.settings.expandCollapseSpeed = DEFAULT_SETTINGS.expandCollapseSpeed;
+            } else {
+              this.plugin.settings.expandCollapseSpeed = v;
+            }
+            // Apply the CSS variables immediately
+            this.plugin.applyCSSVariables();
+            await this.plugin.saveSettings();
+          });
+      });
+
+    // APPEARANCE SECTION
+    new Setting(containerEl).setName("Appearance").setHeading();
+
+    new Setting(containerEl)
+      .setName("Left Sidebar Maximum Width")
+      .setDesc(
+        "Specify the maximum width in pixels for the left sidebar when expanded"
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("300")
+          .setValue(this.plugin.settings.leftSidebarMaxWidth.toString())
+          .onChange(async (value) => {
+            const v = Number(value);
+            if (!value || isNaN(v) || v < 100) {
+              this.plugin.settings.leftSidebarMaxWidth = DEFAULT_SETTINGS.leftSidebarMaxWidth;
+            } else {
+              this.plugin.settings.leftSidebarMaxWidth = v;
+            }
+            // Apply the CSS variables immediately
+            this.plugin.applyCSSVariables();
+            
+            // If sidebar is expanded, update it immediately
+            if (this.plugin.leftSplit && !this.plugin.leftSplit.collapsed) {
+              this.plugin.applySidebarWidth(this.plugin.leftSplit, this.plugin.settings.leftSidebarMaxWidth);
+            }
+            
+            await this.plugin.saveSettings();
+          });
+      });
+
+    new Setting(containerEl)
+      .setName("Right Sidebar Maximum Width")
+      .setDesc(
+        "Specify the maximum width in pixels for the right sidebar when expanded"
+      )
+      .addText((text) => {
+        text
+          .setPlaceholder("300")
+          .setValue(this.plugin.settings.rightSidebarMaxWidth.toString())
+          .onChange(async (value) => {
+            const v = Number(value);
+            if (!value || isNaN(v) || v < 100) {
+              this.plugin.settings.rightSidebarMaxWidth = DEFAULT_SETTINGS.rightSidebarMaxWidth;
+            } else {
+              this.plugin.settings.rightSidebarMaxWidth = v;
+            }
+            // Apply the CSS variables immediately
+            this.plugin.applyCSSVariables();
+            
+            // If sidebar is expanded, update it immediately
+            if (this.plugin.rightSplit && !this.plugin.rightSplit.collapsed) {
+              this.plugin.applySidebarWidth(this.plugin.rightSplit, this.plugin.settings.rightSidebarMaxWidth);
+            }
+            
+            await this.plugin.saveSettings();
+          });
+      });
+  }
 }

@@ -1,15 +1,86 @@
-/*
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
 
-If your plugin does not need CSS, delete this file.
-
-*/
-.expand-sidebar-hover-disabled {
-	
+:root {
+    --sidebar-expand-collapse-speed: 300ms;
+    --sidebar-expand-delay: 200ms;
+    --left-sidebar-max-width: 300px;
+    --right-sidebar-max-width: 300px;
 }
 
 .expand-sidebar-hover-disabled.is-disabled {
-	display: none;
+    display: none;
+}
+
+/* Animation speed and size for regular sidebars */
+.workspace-split.mod-horizontal.mod-left-split,
+.workspace-split.mod-horizontal.mod-right-split,
+.workspace-split.mod-horizontal.mod-sidedock {
+    transition: all var(--sidebar-expand-collapse-speed) ease !important;
+}
+
+/* Overlay mode styles */
+.sidebar-overlay-mode .workspace-split.mod-horizontal.mod-sidedock.mod-left-split {
+    max-width: var(--left-sidebar-max-width);
+    position: absolute;
+    left: var(--ribbon-width);
+    z-index: var(--layer-sidedock);
+    box-shadow: rgba(0, 0, 0, 0.5) 10px 0px 18px -2px;
+    transition: transform var(--sidebar-expand-collapse-speed) ease !important;
+}
+
+.sidebar-overlay-mode .workspace-split.mod-horizontal.mod-sidedock.mod-right-split {
+    max-width: var(--right-sidebar-max-width);
+    position: absolute;
+    right: 0;
+    z-index: var(--layer-sidedock);
+    box-shadow: rgba(0, 0, 0, 0.5) -10px 0px 18px -2px;
+    transition: transform var(--sidebar-expand-collapse-speed) ease !important;
+}
+
+/* Size limits for sidebars */
+.workspace-split.mod-horizontal.mod-left-split {
+    max-width: var(--left-sidebar-max-width) !important;
+    transition: width var(--sidebar-expand-collapse-speed) ease, max-width var(--sidebar-expand-collapse-speed) ease !important;
+}
+
+.workspace-split.mod-horizontal.mod-right-split {
+    max-width: var(--right-sidebar-max-width) !important;
+    transition: width var(--sidebar-expand-collapse-speed) ease, max-width var(--sidebar-expand-collapse-speed) ease !important;
+}
+
+/* Also enforce Obsidian's built-in variables */
+body {
+    --sidebar-width: var(--left-sidebar-max-width) !important;
+    --right-sidebar-width: var(--right-sidebar-max-width) !important;
+}
+
+/* Animation speed for regular sidebars */
+.workspace-split.mod-horizontal.mod-left-split,
+.workspace-split.mod-horizontal.mod-right-split,
+.workspace-split.mod-horizontal.mod-sidedock {
+    transition: all var(--sidebar-expand-collapse-speed) ease !important;
+}
+
+/* Ensure sidebars appear properly on hover */
+.workspace-split.mod-left-split.is-collapsed:hover,
+.workspace-split.mod-right-split.is-collapsed:hover {
+    transition-delay: var(--sidebar-expand-delay);
+}
+
+/* Prevent sidebars from collapsing when hovering inside them */
+.workspace-split.mod-left-split:not(.is-collapsed),
+.workspace-split.mod-right-split:not(.is-collapsed) {
+    pointer-events: auto;
+}
+
+/* Ensure mouse events are properly captured on sidebars */
+.workspace-split.mod-left-split .workspace-leaf,
+.workspace-split.mod-right-split .workspace-leaf {
+    pointer-events: auto;
+}
+
+/* Allow hover detection for collapsed sidebars */
+.workspace-split.mod-left-split.is-collapsed,
+.workspace-split.mod-right-split.is-collapsed {
+    pointer-events: auto;
 }
