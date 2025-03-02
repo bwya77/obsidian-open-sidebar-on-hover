@@ -84,3 +84,23 @@ body {
 .workspace-split.mod-right-split.is-collapsed {
     pointer-events: auto;
 }
+
+/* Implement the JS-CSS combined approach for handling menus */
+.open-sidebar-hover-plugin .menu {
+    /* Ensure menus don't interfere with sidebar hover */
+    z-index: var(--layer-menu);
+}
+
+/* Apply a special class that can be used in JavaScript for menu detection */
+.open-sidebar-hover-plugin .hovered {
+    /* This is the custom class that can be added via JS when a sidebar is being hovered */
+    /* The leftSplit.containerEl.addClass('hovered') approach in the bug report */
+    pointer-events: auto;
+    opacity: 1;
+}
+
+/* Ensure right-click context menus don't cause collapse */
+.open-sidebar-hover-plugin .workspace-split.hovered .menu,
+.open-sidebar-hover-plugin .menu {
+    pointer-events: auto;
+}
