@@ -1,7 +1,7 @@
 {
 	"id": "open-sidebar-on-hover",
 	"name": "Open Sidebar on Hover",
-	"version": "1.0.3",
+	"version": "1.0.4",
 	"minAppVersion": "0.15.0",
 	"description": "Opens the left and/or right side panel by hovering over it.",
 	"author": "AnAngryRaven",
